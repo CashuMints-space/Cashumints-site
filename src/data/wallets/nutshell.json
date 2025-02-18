@@ -1,0 +1,13 @@
+{
+  "name": "Nutshell",
+  "description": "Web-based wallet with a clean interface",
+  "url": "https://nutshell.cash",
+  "platforms": ["Web"],
+  "icon": "Globe",
+  "features": [
+    "Browser-based",
+    "No installation required",
+    "Multiple mint support",
+    "Token backup"
+  ]
+}

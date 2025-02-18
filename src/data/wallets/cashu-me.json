@@ -1,0 +1,13 @@
+{
+  "name": "Cashu.me",
+  "description": "Simple and secure web wallet for Cashu tokens",
+  "url": "https://wallet.cashu.me",
+  "platforms": ["Web"],
+  "icon": "Globe",
+  "features": [
+    "Browser-based",
+    "Instant transfers",
+    "Multiple mint support",
+    "Token backup"
+  ]
+}

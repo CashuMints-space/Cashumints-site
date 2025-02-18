@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    --background: 222 18% 14%;
+    --foreground: 0 0% 100%;
+    --card: 222 18% 18%;
+    --card-foreground: 0 0% 100%;
+    --popover: 222 18% 18%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 35 90% 55%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 222 18% 22%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 222 18% 22%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 222 18% 22%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 18% 22%;
+    --input: 222 18% 22%;
+    --ring: 35 90% 55%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-pop {
+  animation: pop 0.3s ease-in-out;
+}
+
+body {
+  @apply bg-background text-foreground;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bg-gradient {
+  @apply bg-gradient-to-br from-background to-card;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Toast styles */
+.sonner-toast {
+  @apply bg-gray-800 border border-gray-700 !important;
+}
+
+.sonner-toast[data-type="success"] {
+  @apply border-green-500/20 !important;
+}
+
+.sonner-toast[data-type="error"] {
+  @apply border-red-500/20 !important;
+}
+
+.sonner-toast-title {
+  @apply text-white !important;
+}
+
+.sonner-toast-description {
+  @apply text-gray-400 !important;
+}
+
+/* Z-index layers */
+.z-popup-backdrop {
+  z-index: 99999;
+}
+
+.z-popup-content {
+  z-index: 100000;
+}
+
+.z-popup-overlay {
+  z-index: 100001;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .container {
+    @apply px-4;
+  }
+
+  h1 {
+    @apply text-3xl;
+  }
+
+  h2 {
+    @apply text-2xl;
+  }
+
+  .grid {
+    @apply gap-4;
+  }
+
+  .p-8 {
+    @apply p-6;
+  }
+}
+
+/* Improve touch targets on mobile */
+@media (max-width: 768px) {
+  button, 
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    @apply min-h-11 min-w-11;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  @apply scroll-smooth;
+}
+
+/* Better form elements on mobile */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  select,
+  textarea {
+    @apply text-base p-3 rounded-lg;
+  }
+
+  button {
+    @apply p-3;
+  }
+}
+
+/* Prevent content shift when scrollbar appears */
+html {
+  overflow-y: scroll;
+}
+
+/* Hide scrollbar on mobile menu */
+.overflow-y-auto {
+  @apply scrollbar-hide;
+}
+
+/* Ensure emoji picker is always on top */
+.emoji-picker-react {
+  position: relative !important;
+  z-index: 100000 !important;
+}
+
+/* Ensure popups are always on top */
+[role="dialog"] {
+  isolation: isolate;
+}

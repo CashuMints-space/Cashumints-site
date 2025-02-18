@@ -1,0 +1,14 @@
+{
+  "name": "Minibits",
+  "description": "Privacy-focused mobile wallet with advanced features",
+  "url": "https://minibits.cash",
+  "platforms": ["Android"],
+  "icon": "https://play-lh.googleusercontent.com/raLGxOOzbxOsEx25gr-rISzJOdbgVPG11JHuI2yV57TxqPD_fYBof9TRh-vUE-XyhgmN=w240-h480-rw",
+  "features": [
+    "Multiple mint support",
+    "Offline transactions",
+    "Enhanced privacy",
+    "Token backup",
+    "Lightning integration"
+  ]
+}

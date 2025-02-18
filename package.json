@@ -1,0 +1,53 @@
+{
+  "name": "cashumints-space",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@getalby/bitcoin-connect-react": "3.6.3",
+    "@noble/curves": "1.3.0",
+    "@noble/hashes": "1.3.3",
+    "@nostr-dev-kit/ndk": "2.5.1",
+    "@nostr-dev-kit/ndk-cache-dexie": "2.2.5",
+    "@radix-ui/react-dialog": "1.0.5",
+    "@radix-ui/react-separator": "1.0.3",
+    "@radix-ui/react-slot": "1.0.2",
+    "class-variance-authority": "0.7.0",
+    "clsx": "2.1.0",
+    "debug": "4.3.4",
+    "emoji-picker-react": "4.8.0",
+    "lucide-react": "0.344.0",
+    "qrcode": "1.5.3",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-router-dom": "6.22.2",
+    "sonner": "1.4.0",
+    "tailwind-merge": "2.2.1",
+    "tailwindcss-animate": "1.0.7",
+    "zod": "3.22.4"
+  },
+  "devDependencies": {
+    "@types/debug": "4.1.12",
+    "@types/node": "20.11.19",
+    "@types/qrcode": "1.5.5",
+    "@types/react": "18.2.55",
+    "@types/react-dom": "18.2.19",
+    "@vitejs/plugin-react": "4.2.1",
+    "autoprefixer": "10.4.18",
+    "eslint": "8.56.0",
+    "eslint-plugin-react-hooks": "4.6.0",
+    "eslint-plugin-react-refresh": "0.4.5",
+    "globals": "15.0.0",
+    "postcss": "8.4.35",
+    "tailwindcss": "3.4.1",
+    "typescript": "5.3.3",
+    "typescript-eslint": "7.0.1",
+    "vite": "5.1.3"
+  }
+}

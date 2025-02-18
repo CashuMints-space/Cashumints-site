@@ -1,0 +1,13 @@
+{
+  "name": "Nutstash",
+  "description": "A feature-rich mobile wallet for iOS and Android",
+  "url": "https://nutstash.app",
+  "platforms": ["iOS", "Android"],
+  "icon": "Smartphone",
+  "features": [
+    "Multiple mint support",
+    "Backup and restore",
+    "Lightning integration",
+    "Dark mode"
+  ]
+}
