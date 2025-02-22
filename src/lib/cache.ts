@@ -5,6 +5,7 @@ const CACHE_DURATION = parseInt(import.meta.env.VITE_CACHE_DURATION || '3600000'
 const PROFILE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours for profiles
 const REVIEWS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for reviews
 const META_FILTERS_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours for meta filters
+const USER_REVIEWS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for user reviews
 
 interface CacheItem<T> {
   value: T;
@@ -36,6 +37,20 @@ export function setCachedItem<T>(key: string, value: T): void {
       timestamp: Date.now()
     })
   );
+}
+
+// User reviews caching
+export function getCachedUserReviews(pubkey: string): MintRecommendation[] | null {
+  return getCachedItem<MintRecommendation[]>(`user:${pubkey}:reviews`, USER_REVIEWS_CACHE_DURATION);
+}
+
+export function setCachedUserReviews(pubkey: string, reviews: MintRecommendation[]): void {
+  setCachedItem(`user:${pubkey}:reviews`, reviews);
+}
+
+// Clear user reviews cache
+export function clearUserReviewsCache(pubkey: string): void {
+  localStorage.removeItem(`${CACHE_PREFIX}user:${pubkey}:reviews`);
 }
 
 // Profile caching

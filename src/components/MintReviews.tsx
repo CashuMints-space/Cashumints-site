@@ -16,7 +16,9 @@ import {
   MessageSquare,
   Star,
   Filter,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { MintRecommendation } from '../types/mint';
 import StarRating from './StarRating';
@@ -35,6 +37,9 @@ interface MintReviewsProps {
   onDeleteReview?: (reviewId: string) => Promise<void>;
   onEditReview?: (reviewId: string, content: string, rating: number) => Promise<void>;
 }
+
+const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_ITEMS_PER_PAGE = 10;
 
 const MintReviews: React.FC<MintReviewsProps> = ({
   recommendations,
@@ -58,11 +63,24 @@ const MintReviews: React.FC<MintReviewsProps> = ({
   const [editingReview, setEditingReview] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [editRating, setEditRating] = useState(5);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
 
   const userReview = useMemo(() => {
     if (!publicKey) return null;
     return recommendations.find(rec => rec.pubkey === publicKey);
   }, [publicKey, recommendations]);
+
+  // Extract rating from review content according to NIP-87
+  const extractRating = (content: string): number => {
+    const ratingMatch = content.match(/^\[(\d+)\/5\]/);
+    return ratingMatch ? parseInt(ratingMatch[1], 10) : 5;
+  };
+
+  // Clean content by removing the rating prefix
+  const cleanContent = (content: string): string => {
+    return content.replace(/^\[(\d+)\/5\]\s*/, '');
+  };
 
   const handleLoginToReview = () => {
     navigate('/login', { 
@@ -86,10 +104,7 @@ const MintReviews: React.FC<MintReviewsProps> = ({
     
     try {
       // Format review content according to NIP-87
-      // [rating/5] content
-      const formattedContent = reviewContent.trim() 
-        ? `[${rating}/5] ${reviewContent.trim()}`
-        : `[${rating}/5]`;
+      const formattedContent = `[${rating}/5]${reviewContent.trim() ? ` ${reviewContent.trim()}` : ''}`;
 
       log.nostr('Submitting review:', { content: formattedContent });
       await onSubmitReview(formattedContent, rating);
@@ -110,14 +125,10 @@ const MintReviews: React.FC<MintReviewsProps> = ({
     }
   };
 
-  const handleEditReview = async (review: MintRecommendation) => {
-    const ratingMatch = review.content.match(/^\[(\d+)\/5\]/);
-    const initialRating = ratingMatch ? parseInt(ratingMatch[1], 10) : 5;
-    const initialContent = review.content.replace(/^\[(\d+)\/5\]\s*/, '');
-    
+  const handleEditReview = (review: MintRecommendation) => {
     setEditingReview(review.id);
-    setEditContent(initialContent);
-    setEditRating(initialRating);
+    setEditContent(cleanContent(review.content));
+    setEditRating(extractRating(review.content));
   };
 
   const handleSaveEdit = async (review: MintRecommendation) => {
@@ -125,9 +136,7 @@ const MintReviews: React.FC<MintReviewsProps> = ({
     
     try {
       // Format edited content according to NIP-87
-      const formattedContent = editContent.trim()
-        ? `[${editRating}/5] ${editContent.trim()}`
-        : `[${editRating}/5]`;
+      const formattedContent = `[${editRating}/5]${editContent.trim() ? ` ${editContent.trim()}` : ''}`;
 
       await onEditReview(review.id, formattedContent, editRating);
       setEditingReview(null);
@@ -147,54 +156,6 @@ const MintReviews: React.FC<MintReviewsProps> = ({
         log.error('Error deleting review:', error);
         showNotification('Failed to delete review', 'error');
       }
-    }
-  };
-
-  const extractRating = (content: string) => {
-    const ratingMatch = content.match(/^\[(\d+)\/5\]/);
-    return ratingMatch ? parseInt(ratingMatch[1], 10) : 5;
-  };
-
-  const cleanContent = (content: string) => {
-    return content.replace(/^\[(\d+)\/5\]\s*/, '');
-  };
-
-  const formatNpub = (pubkey: string, displayName?: string): string => {
-    try {
-      const npub = nip19.npubEncode(pubkey);
-      
-      // If we have a display name, return it
-      if (displayName) {
-        return displayName;
-      }
-
-      // Otherwise format the npub based on screen width
-      let visibleChars = 8;
-      if (width >= 640) visibleChars = 12;
-      if (width >= 768) visibleChars = 16;
-      if (width >= 1024) visibleChars = 20;
-
-      // For very small screens or when used as name, show only first 10 chars
-      if (width < 375 || !displayName) {
-        return `${npub.slice(0, 10)}...`;
-      }
-
-      return npub.length <= visibleChars * 2 
-        ? npub 
-        : `${npub.slice(0, visibleChars)}...${npub.slice(-visibleChars)}`;
-    } catch (error) {
-      console.warn('Error encoding npub:', error);
-      return pubkey.slice(0, 10) + '...';
-    }
-  };
-
-  const getNjumpUrl = (pubkey: string) => {
-    try {
-      const npub = nip19.npubEncode(pubkey);
-      return `https://njump.me/${npub}`;
-    } catch (error) {
-      console.warn('Error generating njump URL:', error);
-      return null;
     }
   };
 
@@ -227,14 +188,56 @@ const MintReviews: React.FC<MintReviewsProps> = ({
     });
   }, [recommendations, sortBy, filterRating]);
 
-  const ratingCounts = useMemo(() => {
-    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    recommendations.forEach(rec => {
-      const rating = extractRating(rec.content);
-      counts[rating as keyof typeof counts]++;
-    });
-    return counts;
-  }, [recommendations]);
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredAndSortedRecommendations.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRecommendations = filteredAndSortedRecommendations.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    // Scroll to the reviews section instead of the top of the page
+    const reviewsSection = document.getElementById('reviews-section');
+    if (reviewsSection) {
+      reviewsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const formatNpub = (pubkey: string, displayName?: string): string => {
+    try {
+      const npub = nip19.npubEncode(pubkey);
+      
+      if (displayName) {
+        return displayName;
+      }
+
+      let visibleChars = 8;
+      if (width >= 640) visibleChars = 12;
+      if (width >= 768) visibleChars = 16;
+      if (width >= 1024) visibleChars = 20;
+
+      if (width < 375 || !displayName) {
+        return `${npub.slice(0, 10)}...`;
+      }
+
+      return npub.length <= visibleChars * 2 
+        ? npub 
+        : `${npub.slice(0, visibleChars)}...${npub.slice(-visibleChars)}`;
+    } catch (error) {
+      console.warn('Error encoding npub:', error);
+      return pubkey.slice(0, 10) + '...';
+    }
+  };
+
+  const getNjumpUrl = (pubkey: string) => {
+    try {
+      const npub = nip19.npubEncode(pubkey);
+      return `https://njump.me/${npub}`;
+    } catch (error) {
+      console.warn('Error generating njump URL:', error);
+      return null;
+    }
+  };
 
   return (
     <div className="w-full">
@@ -259,6 +262,21 @@ const MintReviews: React.FC<MintReviewsProps> = ({
             </select>
             <ArrowUpDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
           </div>
+          <div className="relative">
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="appearance-none bg-gray-700 text-white px-4 py-2 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f5a623] w-full sm:w-auto"
+            >
+              {ITEMS_PER_PAGE_OPTIONS.map(option => (
+                <option key={option} value={option}>{option} per page</option>
+              ))}
+            </select>
+            <ArrowUpDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          </div>
           {publicKey ? (
             !showReviewForm && !userReview && (
               <button
@@ -278,69 +296,6 @@ const MintReviews: React.FC<MintReviewsProps> = ({
               <span>Login to Review</span>
             </button>
           )}
-        </div>
-      </div>
-
-      <div className="px-6 mb-6">
-        <div className="bg-gray-700/50 backdrop-blur rounded-xl p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              {[5, 4, 3, 2, 1].map(stars => {
-                const count = ratingCounts[stars as keyof typeof ratingCounts];
-                const percentage = recommendations.length > 0 
-                  ? (count / recommendations.length) * 100 
-                  : 0;
-                
-                return (
-                  <button
-                    key={stars}
-                    onClick={() => setFilterRating(filterRating === stars ? null : stars)}
-                    className={`w-full flex items-center space-x-2 p-2 rounded-lg transition-colors ${
-                      filterRating === stars ? 'bg-gray-600' : 'hover:bg-gray-600/50'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-1 w-24">
-                      <Star className={`h-4 w-4 ${stars >= 4 ? 'text-yellow-500' : stars >= 3 ? 'text-yellow-600' : 'text-gray-400'}`} />
-                      <span className="text-sm">{stars}</span>
-                    </div>
-                    <div className="flex-grow h-2 bg-gray-600 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full ${
-                          stars >= 4 ? 'bg-yellow-500' : 
-                          stars >= 3 ? 'bg-yellow-600' : 
-                          'bg-gray-400'
-                        }`}
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-400 w-12 text-right">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-col justify-center items-center">
-              <div className="text-4xl font-bold mb-2">
-                {recommendations.length > 0 
-                  ? (Object.entries(ratingCounts).reduce((acc, [rating, count]) => 
-                      acc + (Number(rating) * count), 0) / recommendations.length).toFixed(1)
-                  : '0.0'
-                }
-              </div>
-              <div className="flex mb-2">
-                <StarRating 
-                  rating={recommendations.length > 0 
-                    ? Math.round(Object.entries(ratingCounts).reduce((acc, [rating, count]) => 
-                        acc + (Number(rating) * count), 0) / recommendations.length)
-                    : 0
-                  } 
-                  size="md"
-                />
-              </div>
-              <p className="text-gray-400 text-sm">
-                Based on {recommendations.length} {recommendations.length === 1 ? 'review' : 'reviews'}
-              </p>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -393,22 +348,16 @@ const MintReviews: React.FC<MintReviewsProps> = ({
       )}
 
       <div className="space-y-4 px-6">
-        {filteredAndSortedRecommendations.length > 0 ? (
-          filteredAndSortedRecommendations.map(rec => {
-            const rating = extractRating(rec.content);
-            const content = cleanContent(rec.content);
-            const isUserReview = publicKey && rec.pubkey === publicKey;
-            const njumpUrl = getNjumpUrl(rec.pubkey);
-            const displayName = rec.profile?.name || rec.profile?.displayName;
-
-            return (
-              <div key={rec.id} className="bg-gray-700/50 backdrop-blur rounded-xl p-6">
+        {paginatedRecommendations.length > 0 ? (
+          <>
+            {paginatedRecommendations.map(rec => (
+              <div key={rec.id} className="bg-gray-700/50 backdrop-blur rounded-xl p-4">
                 <div className="flex items-start space-x-4">
                   <div className="flex-shrink-0">
                     {rec.profile?.image ? (
                       <img 
                         src={rec.profile.image} 
-                        alt={displayName || 'User'} 
+                        alt={rec.profile.name || 'User'} 
                         className="w-12 h-12 rounded-full"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
@@ -426,17 +375,17 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                       <div>
                         <div className="flex items-center space-x-2">
                           <span className="font-medium truncate">
-                            {formatNpub(rec.pubkey, displayName)}
+                            {formatNpub(rec.pubkey, rec.profile?.name || rec.profile?.displayName)}
                           </span>
-                          {isUserReview && (
+                          {rec.pubkey === publicKey && (
                             <span className="text-xs bg-[#f5a623]/20 text-[#f5a623] px-2 py-0.5 rounded-full">
                               Your Review
                             </span>
                           )}
                         </div>
-                        {njumpUrl && (
+                        {getNjumpUrl(rec.pubkey) && (
                           <a
-                            href={njumpUrl}
+                            href={getNjumpUrl(rec.pubkey)!}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group flex items-center space-x-1 text-xs text-gray-400 mt-1 hover:text-[#f5a623] transition-colors"
@@ -447,7 +396,7 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                         )}
                       </div>
                       <div className="flex items-center space-x-3">
-                        <StarRating rating={rating} size="sm" />
+                        <StarRating rating={extractRating(rec.content)} size="sm" />
                         <ZapButton pubkey={rec.pubkey} eventId={rec.id} small />
                       </div>
                     </div>
@@ -467,7 +416,6 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                           onChange={(e) => setEditContent(e.target.value)}
                           className="w-full bg-gray-600 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#f5a623]"
                           rows={3}
-                          placeholder="Share your experience..."
                         />
                         <div className="flex justify-end space-x-2">
                           <button
@@ -488,7 +436,7 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                     ) : (
                       <>
                         <p className="text-gray-300 mb-3 break-words whitespace-pre-wrap">
-                          {content}
+                          {cleanContent(rec.content)}
                         </p>
                         <div className="flex items-center justify-between text-sm">
                           <div className="flex items-center text-gray-400">
@@ -497,7 +445,7 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                               {new Date(rec.createdAt * 1000).toLocaleDateString()}
                             </span>
                           </div>
-                          {isUserReview && (
+                          {rec.pubkey === publicKey && (
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => handleEditReview(rec)}
@@ -521,8 +469,45 @@ const MintReviews: React.FC<MintReviewsProps> = ({
                   </div>
                 </div>
               </div>
-            );
-          })
+            ))}
+            
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 bg-gray-700/50 backdrop-blur rounded-xl p-4">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span>Previous</span>
+                </button>
+                <div className="flex items-center space-x-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => handlePageChange(page)}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                        currentPage === page
+                          ? 'bg-[#f5a623] text-black'
+                          : 'bg-gray-600 hover:bg-gray-500'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-12 bg-gray-700/50 backdrop-blur rounded-xl">
             <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-500" />
