@@ -22,6 +22,7 @@ import Footer from '../components/Footer';
 import StarRating from '../components/StarRating';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { log, logError } from '../lib/debug';
+import { getCachedUserReviews, setCachedUserReviews, clearUserReviewsCache } from '../lib/cache';
 
 const Dashboard = () => {
   const { publicKey, ndk } = useNDK();
@@ -48,20 +49,30 @@ const Dashboard = () => {
 
       try {
         setLoadingReviews(true);
-        log.nostr('Fetching user reviews...');
+        log.nostr('Loading user reviews...');
 
-        // Fetch all reviews by the user
-        const filter: NDKFilter = {
+        // Check cache first
+        const cachedReviews = getCachedUserReviews(publicKey);
+        if (cachedReviews) {
+          log.nostr('Using cached user reviews');
+          setUserReviews(cachedReviews);
+          setLoadingReviews(false);
+        }
+
+        // Fetch fresh reviews
+        const filter = {
           kinds: [38000],
           authors: [publicKey],
           "#k": ["38172"],
-          limit: 100 // Increase limit to get more reviews
+          limit: 100
         };
 
         const events = await ndk.fetchEvents(filter);
         const reviews = await Promise.all(Array.from(events).map(async event => {
           const mintId = event.getMatchingTags('d')[0]?.[1];
           const mint = mints.find(m => m.id === mintId);
+          
+          // Parse rating from content
           const content = event.content;
           const ratingMatch = content.match(/^\[(\d+)\/5\]/);
           const rating = ratingMatch ? parseInt(ratingMatch[1], 10) : 0;
@@ -73,28 +84,75 @@ const Dashboard = () => {
             mintId,
             mintName: mint?.name || 'Unknown Mint',
             mintUrl: mint?.url || '',
-            content: cleanContent || null, // Handle empty content case
+            content: cleanContent || null,
             rating,
             createdAt: event.created_at
           };
         }));
 
-        log.nostr('Fetched reviews:', reviews.length);
-        setUserReviews(reviews.sort((a, b) => b.createdAt - a.createdAt));
+        // Sort reviews by date (newest first)
+        const sortedReviews = reviews.sort((a, b) => b.createdAt - a.createdAt);
+
+        // Update cache and state
+        setCachedUserReviews(publicKey, sortedReviews);
+        setUserReviews(sortedReviews);
+        setLoadingReviews(false);
+        log.nostr('Fetched fresh reviews:', sortedReviews.length);
       } catch (error) {
         logError(error, 'Loading user reviews');
         showNotification('Failed to load reviews', 'error');
-      } finally {
         setLoadingReviews(false);
       }
     };
 
     loadUserReviews();
-  }, [ndk, publicKey, mints]);
+
+    // Subscribe to real-time updates
+    if (ndk && publicKey) {
+      const filter = {
+        kinds: [38000, 5],
+        authors: [publicKey],
+        "#k": ["38172"],
+        since: Math.floor(Date.now() / 1000)
+      };
+
+      const subscription = ndk.subscribe(
+        [filter],
+        {
+          closeOnEose: false,
+          groupable: true,
+          groupingDelay: 200
+        },
+        undefined,
+        {
+          onEvent: async (event) => {
+            if (event.kind === 5) {
+              // Handle deletion
+              const deletedId = event.tags.find(t => t[0] === 'e')?.[1];
+              if (deletedId) {
+                setUserReviews(current => current.filter(r => r.id !== deletedId));
+                clearUserReviewsCache(publicKey);
+              }
+            } else {
+              // Refresh reviews on new review
+              const cachedReviews = getCachedUserReviews(publicKey);
+              if (cachedReviews) {
+                setUserReviews(cachedReviews);
+              }
+            }
+          }
+        }
+      );
+
+      return () => {
+        subscription.stop();
+      };
+    }
+  }, [ndk, publicKey, mints, showNotification]);
 
   const handleEditReview = (review: any) => {
     setEditingReview(review.id);
-    setEditContent(review.content);
+    setEditContent(review.content || '');
     setEditRating(review.rating);
   };
 
@@ -104,31 +162,39 @@ const Dashboard = () => {
     try {
       log.nostr('Updating review:', { id: review.id, content: editContent, rating: editRating });
 
-      const event = {
+      // Create deletion event for old review
+      const deleteEvent = new NDKEvent(ndk, {
+        kind: 5,
+        content: '',
+        tags: [
+          ['e', review.id],
+          ['k', '38000']
+        ]
+      });
+
+      await deleteEvent.sign();
+      await deleteEvent.publish();
+
+      // Create new review event
+      const newEvent = new NDKEvent(ndk, {
         kind: 38000,
-        content: `${editRating} stars - ${editContent}`,
+        content: `[${editRating}/5]${editContent ? ` ${editContent}` : ''}`,
         tags: [
           ['k', '38172'],
           ['d', review.mintId],
           ['u', review.mintUrl],
           ['a', `38172:${review.mintId}`]
         ]
-      };
+      });
 
-      const ndkEvent = new NDKEvent(ndk, event);
-      await ndkEvent.sign();
-      await ndkEvent.publish();
+      await newEvent.sign();
+      await newEvent.publish();
 
       showNotification('Review updated successfully', 'success');
       setEditingReview(null);
       
-      // Refresh reviews
-      const updatedReviews = userReviews.map(r => 
-        r.id === review.id ? { ...r, content: editContent, rating: editRating } : r
-      );
-      setUserReviews(updatedReviews);
-      
-      // Refresh mints to update the review in the main list
+      // Clear cache and refresh reviews
+      clearUserReviewsCache(publicKey!);
       refreshMints();
     } catch (error) {
       logError(error, 'Updating review');
@@ -143,20 +209,23 @@ const Dashboard = () => {
       log.nostr('Deleting review:', review.id);
 
       // Create deletion event
-      const event = {
+      const event = new NDKEvent(ndk, {
         kind: 5,
         content: '',
-        tags: [['e', review.id]]
-      };
+        tags: [
+          ['e', review.id],
+          ['k', '38000']
+        ]
+      });
 
-      const ndkEvent = new NDKEvent(ndk, event);
-      await ndkEvent.sign();
-      await ndkEvent.publish();
+      await event.sign();
+      await event.publish();
 
       showNotification('Review deleted successfully', 'success');
       
-      // Remove from local state
+      // Remove from local state and clear cache
       setUserReviews(current => current.filter(r => r.id !== review.id));
+      clearUserReviewsCache(publicKey!);
       
       // Refresh mints to update the main list
       refreshMints();
@@ -166,7 +235,6 @@ const Dashboard = () => {
     }
   };
 
-  // Load suggested relays from Nostr
   const loadSuggestedRelays = async () => {
     if (!ndk) return;
     

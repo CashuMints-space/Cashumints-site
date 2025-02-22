@@ -19,6 +19,10 @@ import { nip19 } from 'nostr-tools';
 import { log, logError } from '../lib/debug';
 import { calculateRating, parseMintContent } from './mints/utils';
 
+const METADATA_FETCH_INTERVAL = 5000; // 5 seconds between each mint metadata fetch
+const METADATA_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const REVIEW_FETCH_INTERVAL = 10000; // 10 seconds between review fetches
+
 interface MintsContextType {
   mints: CashuMint[];
   loading: boolean;
@@ -31,9 +35,6 @@ interface MintsContextType {
 }
 
 const MintsContext = createContext<MintsContextType | undefined>(undefined);
-
-const METADATA_FETCH_INTERVAL = 5000; // 5 seconds between each mint metadata fetch
-const METADATA_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
 export function MintsProvider({ children }: { children: React.ReactNode }) {
   const { ndk, isReady } = useNDK();
@@ -52,8 +53,10 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
   const metadataQueue = useRef<string[]>([]);
   const isFetchingMetadata = useRef(false);
   const abortController = useRef<AbortController | null>(null);
+  const shouldFetchMetadata = useRef(false);
+  const isInitialMount = useRef(true);
 
-  const getProfile = async (pubkey: string) => {
+  const getProfile = useCallback(async (pubkey: string) => {
     if (!ndk) return null;
 
     const cachedProfile = getCachedProfile(pubkey);
@@ -72,7 +75,7 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
       console.warn('Error fetching profile:', error);
       return null;
     }
-  };
+  }, [ndk]);
 
   const processRecommendations = useCallback(async (
     mintId: string,
@@ -98,7 +101,7 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
     return recommendations;
   }, [getProfile]);
 
-  const updateMetaFilters = (mint: CashuMint, mintInfo: MintInfo | null) => {
+  const updateMetaFilters = useCallback((mint: CashuMint, mintInfo: MintInfo | null) => {
     setMetaFilters(current => {
       const newFilters = { ...current };
       
@@ -135,7 +138,7 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
     });
 
     setCachedMetaFilters(metaFilters);
-  };
+  }, []);
 
   const fetchMintMetadata = useCallback(async () => {
     if (isFetchingMetadata.current || metadataQueue.current.length === 0) return;
@@ -176,7 +179,13 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
         // Update mint in state
         setMints(current => 
           current.map(m => 
-            m.id === mintId ? { ...m, info } : m
+            m.id === mintId ? { 
+              ...m, 
+              info,
+              name: info.name || m.name,
+              description: info.description || m.description,
+              lastFetched: Date.now()
+            } : m
           )
         );
 
@@ -191,34 +200,14 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
       isFetchingMetadata.current = false;
       abortController.current = null;
 
-      // Schedule next metadata fetch
-      setTimeout(fetchMintMetadata, METADATA_FETCH_INTERVAL);
-    }
-  }, [mints]);
-
-  // Start metadata fetching when mints are loaded
-  useEffect(() => {
-    if (mints.length > 0) {
-      // Reset and populate metadata queue
-      metadataQueue.current = mints
-        .filter(mint => !mint.info || !mint.lastFetched || Date.now() - mint.lastFetched > METADATA_CACHE_DURATION)
-        .map(mint => mint.id);
-
-      // Start fetching if not already running
-      if (!isFetchingMetadata.current) {
-        fetchMintMetadata();
+      // Schedule next metadata fetch if we should continue
+      if (shouldFetchMetadata.current) {
+        setTimeout(fetchMintMetadata, METADATA_FETCH_INTERVAL);
       }
     }
+  }, [mints, updateMetaFilters]);
 
-    return () => {
-      // Cleanup on unmount
-      if (abortController.current) {
-        abortController.current.abort();
-      }
-    };
-  }, [mints, fetchMintMetadata]);
-
-  const loadMints = async () => {
+  const loadMints = useCallback(async () => {
     if (!ndk || !isReady) return;
 
     try {
@@ -305,9 +294,9 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [ndk, isReady, processRecommendations, updateMetaFilters]);
 
-  const getMintInfo = async (mintId: string): Promise<MintInfo | null> => {
+  const getMintInfo = useCallback(async (mintId: string): Promise<MintInfo | null> => {
     const mint = mints.find(m => m.id === mintId);
     if (!mint) return null;
 
@@ -335,9 +324,9 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
     }
 
     return mint.info as MintInfo || null;
-  };
+  }, [mints, updateMetaFilters]);
 
-  const recommendMint = async (mintId: string, content: string, rating: number) => {
+  const recommendMint = useCallback(async (mintId: string, content: string, rating: number) => {
     if (!ndk || !isReady) {
       log.error('NDK not ready for recommendation');
       return false;
@@ -350,7 +339,7 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const reviewContent = content ? `[${rating}/5] ${content}` : `[${rating}/5]`;
+      const reviewContent = `[${rating}/5]${content.trim() ? ` ${content.trim()}` : ''}`;
       
       log.nostr('Creating recommendation event:', { mintId, content: reviewContent });
       
@@ -378,8 +367,51 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
       logError(err, 'Recommending mint');
       return false;
     }
-  };
+  }, [ndk, isReady, mints, loadMints]);
 
+  // Start metadata fetching when mints are loaded
+  useEffect(() => {
+    if (!isInitialMount.current && mints.length > 0) {
+      // Reset and populate metadata queue
+      metadataQueue.current = mints
+        .filter(mint => !mint.info || !mint.lastFetched || Date.now() - mint.lastFetched > METADATA_CACHE_DURATION)
+        .map(mint => mint.id);
+
+      // Start fetching if not already running
+      if (!isFetchingMetadata.current && shouldFetchMetadata.current) {
+        fetchMintMetadata();
+      }
+    }
+
+    isInitialMount.current = false;
+
+    return () => {
+      // Cleanup on unmount
+      if (abortController.current) {
+        abortController.current.abort();
+      }
+    };
+  }, [mints, fetchMintMetadata]);
+
+  // Control metadata fetching based on route
+  useEffect(() => {
+    const handleRouteChange = () => {
+      const path = window.location.pathname;
+      shouldFetchMetadata.current = path === '/' || path === '/all-mints';
+    };
+
+    // Set initial value
+    handleRouteChange();
+
+    // Listen for route changes
+    window.addEventListener('popstate', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
+  // Subscribe to real-time updates
   useEffect(() => {
     if (ndk && isReady) {
       loadMints();
@@ -433,7 +465,7 @@ export function MintsProvider({ children }: { children: React.ReactNode }) {
         }
       };
     }
-  }, [ndk, isReady]);
+  }, [ndk, isReady, loadMints]);
 
   return (
     <MintsContext.Provider 
