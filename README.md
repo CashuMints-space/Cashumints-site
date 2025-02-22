@@ -34,11 +34,11 @@ Visit us at: [https://cashumints.space](https://cashumints.space)
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/cashumints-space.git
+   git clone https://github.com/CashuMints-space/Cashumints-site.git
    ```
 2. Navigate to the project directory:
    ```bash
-   cd cashumints-space
+   cd Cashumints-site
    ```
 3. Install dependencies:
    ```bash
