@@ -14,6 +14,7 @@ import MintHeader from '../components/mint/MintHeader';
 import MintContent from '../components/mint/MintContent';
 import MintSidebar from '../components/mint/MintSidebar';
 import { Link } from 'react-router-dom';
+import { NextSeo } from 'next-seo';
 
 const MintDetails: React.FC = () => {
   const { mintId } = useParams<{ mintId: string }>();
@@ -307,6 +308,22 @@ const MintDetails: React.FC = () => {
 
   return (
     <>
+      <NextSeo
+        title={mint.name}
+        description={mint.description}
+        openGraph={{
+          title: mint.name,
+          description: mint.description,
+          images: [
+            {
+              url: mint.image || 'https://cashumints.space/default-image.jpg',
+              width: 800,
+              height: 600,
+              alt: mint.name,
+            },
+          ],
+        }}
+      />
       <div className="min-h-screen bg-[#1a1f2e]">
         <MintHeader
           mint={mint}
