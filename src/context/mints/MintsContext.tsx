@@ -260,8 +260,8 @@ export const MintsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       // Format the review content according to NIP-87
-      // If content is null or empty, only include the rating
-      const reviewContent = content ? `[${rating}/5] ${content}` : `[${rating}/5]`;
+      // Ensure the score is only included once
+      const reviewContent = content ? `[${rating}/5] ${content.replace(/^\[\d+\/5\]\s*/, '')}` : `[${rating}/5]`;
       
       log.nostr('Creating recommendation event:', { mintId, content: reviewContent });
       
